@@ -1,0 +1,3 @@
+﻿  main.cpp
+d:\programming\github\open gl\matrix-graphics\rotating shapes\rotating shapes\main.cpp(200): warning C4244: '=': conversion from 'int' to 'GLfloat', possible loss of data
+  Rotating Shapes.vcxproj -> D:\Programming\GitHub\Open GL\Matrix-Graphics\Rotating Shapes\Debug\Rotating Shapes.exe
