@@ -2,6 +2,7 @@
 #include "Dependencies\glew\glew.h"
 #include "Dependencies\freeglut\freeglut.h"
 #include "ShaderLoader.h"
+#include "Camera.h"
 
 
 #include "Dependencies\glm\glm.hpp"
@@ -29,16 +30,10 @@ glm::mat4 scalingMatrix = glm::scale(glm::mat4(), objectScale);
 
 glm::mat4 model = translationMatrix * rotationZ * scalingMatrix;
 
-// Camera for prototyping
-glm::vec3 cameraPosition = glm::vec3(0.0f, 0.0f, 3.0f);
-glm::vec3 cameraLookDirection = glm::vec3(0.0f, 0.0f, -1.0f);
-glm::vec3 cameraUpDirection = glm::vec3(0.0f, 1.0f, 0.0f);
+Camera camera;
 
-glm::mat4 viewMatrix = glm::lookAt(cameraPosition, cameraLookDirection, cameraUpDirection);
-
-const unsigned int SCREEN_WIDTH = 800;
-const unsigned int SCREEN_HEIGHT = 800;
-glm::mat4 projectionMatrix = glm::perspective(45.0f, (float)SCREEN_WIDTH / (float)SCREEN_HEIGHT, 0.1f, 100.0f);
+glm::mat4 viewMatrix = camera.CreateViewMatrix();
+glm::mat4 projectionMatrix = camera.CreatePerspectiveProjection();
 
 glm::mat4 PVM = projectionMatrix * viewMatrix * model;
 
@@ -63,6 +58,7 @@ GLuint quadIndices[] =
 void Render();
 void Initialise();
 void Update();
+void RotateCameraAroundObject();
 
 
 int main (int argc, char **argv)
@@ -200,10 +196,17 @@ void Update()
 	currentTime = glutGet(GLUT_ELAPSED_TIME);
 	currentTime = currentTime / 1000.0f; // Now it's seconds instead of miliseconds
 
-	
+	RotateCameraAroundObject();
+
+	PVM = projectionMatrix * viewMatrix * model;
 
 
 
 	glutPostRedisplay();
 }
 
+void RotateCameraAroundObject()
+{
+	camera.RotateAroundObject(objectiPosition, 2, currentTime);
+	viewMatrix = camera.CreateViewMatrix();
+}
