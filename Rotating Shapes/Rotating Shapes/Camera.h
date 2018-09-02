@@ -26,11 +26,11 @@ public:
 
 
 private:
-	glm::vec3 cameraPosition = glm::vec3(0.0f, 0.0f, 3.0f);
+	glm::vec3 cameraPosition = glm::vec3(0.0f, 0.0f, 10.0f);
 	glm::vec3 cameraLookDirection = glm::vec3(0.0f, 0.0f, -1.0f);
 	glm::vec3 cameraUpDirection = glm::vec3(0.0f, 1.0f, 0.0f);
 
-	const unsigned int SCREEN_WIDTH = 800;
-	const unsigned int SCREEN_HEIGHT = 800;
+	const unsigned int SCREEN_WIDTH = 1024;
+	const unsigned int SCREEN_HEIGHT = 768;
 };
 

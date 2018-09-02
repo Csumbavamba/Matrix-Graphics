@@ -1,64 +1,64 @@
+// Vertices and Textures
 #include "Dependencies\soil\SOIL.h"
 #include "Dependencies\glew\glew.h"
 #include "Dependencies\freeglut\freeglut.h"
-#include "ShaderLoader.h"
-#include "Camera.h"
 
+// Sound
+#include "Dependencies\fmod\fmod.hpp"
 
+// Matrix calculators
 #include "Dependencies\glm\glm.hpp"
 #include "Dependencies\glm\gtc\matrix_transform.hpp"
 #include "Dependencies\glm\gtc\type_ptr.hpp"
 
+// Own classes
+#include "ShaderLoader.h"
+#include "GameObject.h"
+#include "Camera.h"
+#include "Input.h"
+
+// Generic libraries
+#include <vector>
+#include <algorithm>
+
 GLuint program;
-GLuint quadVBO; // Vertex buffer Object
-GLuint quadVAO; // vertex array object
-GLuint quadEBO; // Element Buffer Object
 GLfloat currentTime;
 
-GLuint texture, texture2;
-std::string raymanFilePath = "Sprites/Rayman.jpg";
+Camera mainCamera;
+Input inputManager;
+GameObject player, enemy;
+std::vector<GameObject*> gameObjects;
 
-
-// Matrix calculation demo
-glm::vec3 objectiPosition = glm::vec3(0.5f, 0.5f, 0.0f);
-glm::mat4 translationMatrix = glm::translate(glm::mat4(), objectiPosition);
-glm::vec3 objectRotation = glm::vec3(0.0f, 0.0f, 1.0f);
-float rotationAngle = 180;
-glm::mat4 rotationZ = glm::rotate(glm::mat4(), glm::radians(rotationAngle), objectRotation);
-glm::vec3 objectScale = glm::vec3(0.5f, 0.5f, 0.5f);
-glm::mat4 scalingMatrix = glm::scale(glm::mat4(), objectScale);
-
-glm::mat4 model = translationMatrix * rotationZ * scalingMatrix;
-
-Camera camera;
-
-glm::mat4 viewMatrix = camera.CreateViewMatrix();
-glm::mat4 projectionMatrix = camera.CreatePerspectiveProjection();
-
-glm::mat4 PVM = projectionMatrix * viewMatrix * model;
+// Sounds
+FMOD::System * audioSystem = nullptr;
+FMOD::Sound * fxThump;
+FMOD::Sound * backgroundMusic;
 
 
 
 
-GLfloat quad[] =
-{
-	// position				// color			// Tex Coords
-	-0.5f,  0.5f, 0.0f,		0.0f, 1.0f, 1.0f,	0.0f, 0.0f,		// Top Left
-	+0.5f,  0.5f, 0.0f,		0.0f, 1.0f, 1.0f,	1.0f, 0.0f,		// Top Right
-	-0.5f, -0.5f, 0.0f,		0.0f, 1.0f, 1.0f,	0.0f, 1.0f,		// Bottom Left
-	+0.5f, -0.5f, 0.0f,		0.0f, 1.0f, 1.0f,	1.0f, 1.0f		// Bottom Right
-};
-
-GLuint quadIndices[] =
-{
-	0, 2, 1,	// Top Left
-	2, 3, 1		// Bottom Right
-};
-
+// Essential Functions
 void Render();
 void Initialise();
 void Update();
-void RotateCameraAroundObject();
+
+void UpdatePVM(GameObject * object);
+
+
+// Sound
+bool AudioInitialise();
+bool CreateBackgroundMusic();
+bool StartBackgroundMusic();
+bool ReleaseSound();
+
+// Input 
+void ProcessInput();
+void KeyboardDown(unsigned char key, int x, int y);
+void KeyboardUp(unsigned char key, int x, int y);
+
+void MouseClick(int button, int state, int x, int y);
+void MousePassiveMove(int x, int y);
+void MouseActiveMove(int x, int y);
 
 
 int main (int argc, char **argv)
@@ -66,8 +66,8 @@ int main (int argc, char **argv)
 	glutInit(&argc, argv);
 	glutInitDisplayMode(GLUT_DEPTH | GLUT_DOUBLE | GLUT_RGBA);
 	glutInitWindowPosition(0, 0);
-	glutInitWindowSize(800, 600);
-	glutCreateWindow("Rotating Shapes");
+	glutInitWindowSize(1024, 768);
+	glutCreateWindow("Norton Defender");
 
 	glClearColor(1.0, 0.0, 0.0, 1.0); // Clear Window
 
@@ -75,10 +75,49 @@ int main (int argc, char **argv)
 	Initialise();
 
 	// Register callbacks
+	// StartBackgroundMusic();
+
+	
+
 	glutDisplayFunc(Render);
 	glutIdleFunc(Update);
+	
+	// Input stuff
+	glutKeyboardFunc(KeyboardDown);
+	glutKeyboardUpFunc(KeyboardUp);
+	//glutSpecialFunc();
+	//glutSpecialUpFunc();
+	glutMouseFunc(MouseClick);
+	glutMotionFunc(MouseActiveMove);
+	glutPassiveMotionFunc(MousePassiveMove);
+
 	glutMainLoop();
+	ReleaseSound();
 	return 0;
+
+
+}
+
+void Initialise()
+{
+	ShaderLoader shaderLoader;
+	program = shaderLoader.CreateProgram("VertexShader.vs", "FragmentShader.fs");
+
+	AudioInitialise();
+	CreateBackgroundMusic();
+
+	player.Initialise();
+	player.AddTexturePath("Sprites/AwesomeFace.png");
+	player.SetupTexture();
+	player.translate.scale *= 100.0f;
+
+	enemy.Initialise();
+	enemy.SetupTexture();
+	enemy.translate.position.x = 100.0f;
+	enemy.translate.scale *= 100.0f;
+
+	gameObjects.push_back(&player);
+	gameObjects.push_back(&enemy);
 
 
 }
@@ -88,23 +127,20 @@ void Render()
 	glClear(GL_COLOR_BUFFER_BIT);
 	glClearColor(1.0, 0.0, 0.0, 1.0); // clear red
 
-	glUseProgram(program);
+	// Render each gameObject
+	for (GameObject * object : gameObjects)
+	{
+		object->Render(program);
+		UpdatePVM(object);
+	}
 
-	// Add texture
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, texture);
-	glUniform1i(glGetUniformLocation(program, "tex"), 0);
 
-	// Draw quad with texture
-	glBindVertexArray(quadVAO);
-	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-
+	
 	GLuint currentTimeLocation = glGetUniformLocation(program, "currentTime");
 	glUniform1f(currentTimeLocation, currentTime);
 
 	// Update Transform
-	GLuint PVMLoc = glGetUniformLocation(program, "PVM");
-	glUniformMatrix4fv(PVMLoc, 1, GL_FALSE, glm::value_ptr(PVM));
+	
 
 	glBindVertexArray(0); // Unbind VAO
 	glUseProgram(0);
@@ -113,100 +149,127 @@ void Render()
 	glutSwapBuffers();
 }
 
-void Initialise()
-{
-	ShaderLoader shaderLoader;
-	program = shaderLoader.CreateProgram("VertexShader.vs", "FragmentShader.fs");
-
-	// @@@@ QUAD
-	// Create quad VBO - VAO
-	glGenVertexArrays(1, &quadVAO);
-	glBindVertexArray(quadVAO);
-
-	glGenBuffers(1, &quadVBO);
-	glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
-	glBufferData(
-		GL_ARRAY_BUFFER,
-		sizeof(quad),
-		quad,
-		GL_STATIC_DRAW
-	);
-
-	glVertexAttribPointer(
-		0,
-		3,
-		GL_FLOAT,
-		GL_FALSE,				// not normalized
-		8 * sizeof(GLfloat),	// Stride
-		(GLvoid*)0				// Offset
-	);
-
-	glVertexAttribPointer(
-		1,
-		3,
-		GL_FLOAT,
-		GL_FALSE,
-		8 * sizeof(GLfloat),
-		(GLvoid*)(3 * sizeof(GLfloat))
-	);
-
-	glVertexAttribPointer(
-		2,
-		2,
-		GL_FLOAT,
-		GL_FALSE,
-		8 * sizeof(GLfloat),
-		(GLvoid*)(6 * sizeof(GLfloat))
-	);
-
-	// if (color.g == 1.0f && color.b == 1.0f && color.r == 0)
-
-	glEnableVertexAttribArray(0);
-	glEnableVertexAttribArray(1);
-	glEnableVertexAttribArray(2);
-
-	// ADD EBO for quad
-	glGenBuffers(1, &quadEBO);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, quadEBO);
-	glBufferData(
-		GL_ELEMENT_ARRAY_BUFFER,
-		sizeof(quadIndices),
-		quadIndices,
-		GL_STATIC_DRAW
-	);
-
-	// Add textures
-	glGenTextures(1, &texture);
-	glBindTexture(GL_TEXTURE_2D, texture);
-
-	int width, height, channels;
-	unsigned char* raymanImage = SOIL_load_image(raymanFilePath.c_str(), &width, &height, &channels, SOIL_LOAD_RGBA);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, raymanImage);
-
-	glGenerateMipmap(GL_TEXTURE_2D);
-	SOIL_free_image_data(raymanImage);
-	glBindTexture(GL_TEXTURE_2D, 0);
-
-}
-
-
 void Update()
 {
 	// Update game information
 	currentTime = glutGet(GLUT_ELAPSED_TIME);
 	currentTime = currentTime / 1000.0f; // Now it's seconds instead of miliseconds
 
-	RotateCameraAroundObject();
-
-	PVM = projectionMatrix * viewMatrix * model;
-
-
+	// Update sound
+	// audioSystem->update();
+	// Check for input
+	ProcessInput();
+	for (GameObject * object : gameObjects)
+	{
+		object->Update();
+	}
 
 	glutPostRedisplay();
 }
 
-void RotateCameraAroundObject()
+
+void UpdatePVM(GameObject * object)
 {
-	camera.RotateAroundObject(objectiPosition, 2, currentTime);
-	viewMatrix = camera.CreateViewMatrix();
+	GLuint PVMLoc = glGetUniformLocation(program, "PVM");
+	glm::mat4 PVM = mainCamera.CreateOrthographicProjection() * mainCamera.CreateViewMatrix() * object->GetModelMatrix();
+	glUniformMatrix4fv(PVMLoc, 1, GL_FALSE, glm::value_ptr(PVM));
+	
+}
+
+bool AudioInitialise()
+{
+	FMOD_RESULT result;
+	result = FMOD::System_Create(&audioSystem);
+
+	if (result != FMOD_OK)
+		return false;
+
+	result = audioSystem->init(100, FMOD_INIT_NORMAL | FMOD_INIT_3D_RIGHTHANDED, 0);
+
+	if (result != FMOD_OK)
+		return false;
+
+	return true;
+}
+
+bool CreateBackgroundMusic()
+{
+	FMOD_RESULT result;
+	result = audioSystem->createSound(
+		"Audio/Background.mp3",
+		FMOD_LOOP_NORMAL,
+		0,
+		&backgroundMusic
+	);
+
+	if (result != FMOD_OK)
+		return false;
+	return true;
+}
+
+bool StartBackgroundMusic()
+{
+	FMOD_RESULT result;
+	result = audioSystem->playSound(backgroundMusic, 0, false, 0);
+
+	if (result != FMOD_OK)
+		return false;
+	return true;
+}
+
+bool ReleaseSound()
+{
+	audioSystem->release();
+	return true;
+}
+
+// Input functions
+
+void ProcessInput()
+{
+	if (inputManager.keyState['w'] == DOWN)
+	{
+		player.translate.position.y += 0.25f;
+	}
+	if (inputManager.keyState['s'] == DOWN)
+	{
+		player.translate.position.y -= 0.25f;
+	}
+	if (inputManager.keyState['a'] == DOWN)
+	{
+		player.translate.position.x -= 0.25f;
+	}
+	if (inputManager.keyState['d'] == DOWN)
+	{
+		player.translate.position.x += 0.25f;
+	}
+}
+
+void KeyboardDown(unsigned char key, int x, int y)
+{
+	inputManager.keyState[key] = DOWN;
+}
+
+void KeyboardUp(unsigned char key, int x, int y)
+{
+	inputManager.keyState[key] = UP;
+}
+
+void MouseClick(int button, int state, int x, int y)
+{
+	if (button >= 3)		// Avoid array getting out of bounds
+		return;
+
+	inputManager.mouseState[button] = (state == GLUT_DOWN) ? DOWN : UP;
+}
+
+void MousePassiveMove(int x, int y)
+{
+	std::cout << "Passive x: " << x << " | y: " << y << std::endl;
+}
+
+void MouseActiveMove(int x, int y)
+{
+	std::cout << "Clicked x: " << x << " | y: " << y << std::endl;
+	// object1.position.x = x;
 }

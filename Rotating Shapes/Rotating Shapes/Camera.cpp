@@ -25,7 +25,10 @@ glm::mat4 Camera::CreatePerspectiveProjection()
 
 glm::mat4 Camera::CreateOrthographicProjection()
 {
-	return glm::mat4();
+	float halfScreenWidth = SCREEN_WIDTH / 2;
+	float halfScreenHeight = SCREEN_HEIGHT / 2;
+
+	return (glm::ortho(-halfScreenWidth, halfScreenWidth, -halfScreenHeight, halfScreenHeight, 0.1f, 100.0f));
 }
 
 void Camera::SetCameraPosition(glm::vec3 cameraPosition)
